@@ -1,152 +1,57 @@
-# Agentic Task Management Log — Seed
+# A Commitment Log for an AI Agent
 
-A portable setup for always-on, agent-managed task tracking. Works with any AI tool that can (a) load a standing set of instructions and (b) read and write a database.
+Most writing about "memory" for AI agents is about recall: how to give the model a place to stash context so it can find it again later. This is a different idea. It's a log of things you owe, kept by the agent as a byproduct of working with you, and read back by the agent so it can tell you what's slipping.
 
-Three steps: make a table, paste the instruction block into your agent's always-on instructions, optionally schedule a brief.
+The distinction matters. A memory store is something the agent dumps into and searches. A log is a record the agent has to keep faithfully: every commitment gets a row, every row stays, and the state of the world is whatever the rows add up to. The agent doesn't get to remember selectively, and it doesn't get to tidy up history.
 
----
-
-## Step 1 — Make the table
-
-Any database your agent can query works: Notion, Airtable, Google Sheets, Postgres, SQLite, a Markdown file in a repo. The requirement is that it's reachable from *every* conversation thread, not just one.
-
-Seven columns:
-
-| Column | Type | Purpose |
-|---|---|---|
-| `Item` | text (title / primary key) | The thing itself. One stable name per task. |
-| `Verb` | select | `open` · `touch` · `defer` · `close` · `brief` · `missed` |
-| `Logged` | datetime | When the row was written. |
-| `What` | long text | What happened, in prose. |
-| `Next` | long text | The specific next action. |
-| `Due` | date | Optional. |
-| `Until` | date | Optional. For deferrals — don't resurface before this date. |
-
-Rows are events, not tasks. One task accumulates many rows over its life.
+The rest of this document is the handful of principles the idea rests on, the minimal shape it needs, and the decisions you'll make yourself when you build one.
 
 ---
 
-## Step 2 — Paste this into your agent's always-on instructions
+## The principles
 
-Claude Code / Cowork: `CLAUDE.md`. Cursor: `.cursorrules`. ChatGPT: custom instructions or a project. Anywhere that loads on every thread.
+**Rows are events, not tasks.** A task is not a row that gets updated as it progresses. It's a name that accumulates rows over its life: opened, touched, deferred, closed, maybe reopened. Nothing is ever edited or deleted. If a row was wrong, the correction is another row. This is what makes the log trustworthy: the history can't be rewritten by the agent, and anything you see in it actually happened in that order.
 
-Replace everything in `<ANGLE BRACKETS>` before using.
+**Every thing has one stable name.** The name is the key that ties the rows together, so it has to be the *entity* rather than the action or the status. The action changes, the status changes, the entity doesn't. Before the agent coins a new name it should check what already exists and reuse it, including names that were closed long ago. Reopening something is a new row on the old name, never a new name. When two names look like the same thing, the agent flags it and you decide; it doesn't merge or rename on its own.
 
-```markdown
-## Agentic Task Management Log
+**Open means the latest row doesn't say closed.** There's no status column to keep in sync. The current state of any item is derived from its most recent row. This falls out of the append-only rule and it's what keeps the log honest: you can't mark something done without leaving a record of having done so.
 
-The task log is <DATABASE NAME> at <LOCATION / URL / CONNECTION STRING>.
-<ANY QUERY DETAILS YOUR TOOL NEEDS — table name, ID, auth.>
+**The agent writes the row itself, during the work.** The whole value is that logging costs you nothing. If you have to approve every row, you've rebuilt a task manager with extra steps. So the agent writes the row the moment a commitment appears, before it continues its reply, not at the end of the session, because sessions don't reliably end. And it logs only things that are owed. Questions, lookups, and conversation aren't commitments.
 
-Columns: Item (title) · Verb (open/touch/defer/close/brief/missed) · Logged ·
-What · Next · Due · Until
+**Answer first, log second.** The log exists to serve the conversation, not to interrupt it. The agent answers what you asked, then attends to the log. You should never have to sit through a status report to get a question answered.
 
-### Core rules
-
-The log is APPEND-ONLY. Never edit or delete an existing row. Correct a mistake
-by adding another row.
-
-Item is the primary key. An item is open if its most recent row's verb is not
-`close`.
-
-Write the row DURING the session, before continuing your reply — never at the
-end. Sessions have no reliable end. Log only things that are owed; not questions,
-not lookups.
-
-Answer what I actually asked FIRST. The log check comes after, never before.
-Never make me sit through a status report to ask a question.
-
-### Naming
-
-Before writing a row with an Item value you haven't already seen this session,
-list what exists and reuse it:
-
-  SELECT DISTINCT Item FROM <TABLE> WHERE Item <> '—' ORDER BY Item
-
-If an existing Item covers the thing, use that string exactly — including closed
-ones. Reopening is a new row on the old name, never a new name.
-
-New names: lowercase kebab-case, 2–3 words, the entity not the action
-(`tesla-license`, not `renew-tesla-license-online`). No verbs, no dates, no
-status words. The action and status change; the entity doesn't.
-
-If two Items look like the same thing, don't merge and don't rename — tell me.
-If I confirm, append a `close` row on the variant with
-What = "duplicate of <canonical>", then continue on the canonical name.
-
-### Reading it
-
-At session start, run ONLY this staleness check:
-
-  SELECT MAX(date(Logged)) FROM <TABLE> WHERE Verb = 'brief'
-
-If that date is today, stop — no further log reads.
-
-When you need the open list, pull it slim. Never select What or Next at startup;
-prose columns are an order of magnitude larger than everything else combined and
-you don't need them to know what's open:
-
-  WITH r AS (
-    SELECT Item, Verb, Logged, Due,
-      ROW_NUMBER() OVER (PARTITION BY Item ORDER BY datetime(Logged) DESC) rn
-    FROM <TABLE> WHERE Item <> '—')
-  SELECT Item, Verb, Logged, Due FROM r WHERE rn = 1 ORDER BY Due
-
-Fetch What/Next only for the one item actually being worked.
-
-### Accuracy
-
-Never invent a name, date, provider, address, or amount. If you are not certain,
-say so explicitly. Do not state a proper noun as fact unless you saw it in a
-primary source during this session. Cite the source for every finding.
-```
+**Read as little as possible.** The agent doesn't need the whole log to know what's open. It needs the name, the latest verb, and the dates. The prose, what happened and what's next, is only needed for the one item actually being worked, and it's by far the most expensive part of the log to read. A log that gets loaded in full on every session becomes a tax on every session.
 
 ---
 
-## Step 3 — Optional: the periodic brief
+## The minimal shape
 
-A scheduled job that sweeps your inputs and reports. This is what surfaces the thing you'd otherwise miss — the comment that tagged you, the email with a deadline buried in it.
+You need surprisingly little. Each row records which item it's about, what kind of event it is, when it was written, and a note in prose about what happened. Two optional dates are useful: when the item is due, and, for deferrals, a date before which it shouldn't resurface. That last one is what makes deferral mean something rather than being a polite word for ignoring.
 
-```markdown
-Attention scan. Scope: <PERSONAL / WORK — pick one, don't mix>.
+The event kinds are a small fixed vocabulary. Something like open, touch, defer, close is enough to start; you'll know within a few weeks whether you need more. The vocabulary is a dial, not a spec.
 
-1. Pull the open list with the slim query above.
-2. Scan <YOUR SOURCES — e.g. email, calendar, doc comments, notes app> for items
-   needing attention that are NOT already in the log. Prioritize what is new
-   since the last run. Look for: anything with a deadline, anything where
-   someone is waiting on me, anything requiring a decision.
-3. DO NOT write open/touch/defer/close rows. I decide what gets logged. Propose
-   findings in your reply only.
-4. Write exactly ONE row: Item = "—", Verb = `brief`, Logged = now, What = the
-   time each source was reached plus a one-line summary. Under ~600 characters.
-   It's a watermark, not a report.
-5. Report briefly: new candidates with source and date; anything overdue or due
-   within 3 days; anything open and untouched for 7+ days. For each new
-   candidate, propose the exact Item slug it would get, checked against the
-   existing list. If nothing needs me, say exactly that and stop.
-```
-
-Cadence: hourly is aggressive but works if step 3 is enforced and step 4 stays short. Daily is the safe default. The brief must be allowed to say "nothing" — otherwise it becomes another notification source and defeats the purpose.
+Where the rows live doesn't matter much, as long as the agent can read and write it from every conversation, not just one. A Notion database, a spreadsheet, a real database, a file in a repo all work. Pick whatever your agent can already reach.
 
 ---
 
-## Things worth knowing before you start
+## Decisions you'll make
 
-**Display names are not column names.** Most databases expose a different identifier to queries than the one you see in the UI (Notion date fields become `date:Logged:start`; Airtable has field IDs). Find yours once and write it into the instructions verbatim. Otherwise every session pays for a failed query plus a schema fetch.
+The principles above are the parts worth keeping. Everything else is yours to steer, and most of it you'll only get right by watching what your own log does.
 
-**Measure your context cost.** Prose columns dominate. In a real 24-item log, `What` and `Next` were ~14,000 characters against ~1,000 for everything else — 13x, paid on every session, to answer a question needing four columns. That's why the slim query exists. Measure yours rather than assuming.
+**Granularity.** One item per thing you can actually finish. An item that covers a whole checklist stays open forever, because something on the list is always unfinished, and it stops carrying information. Where you draw the line depends on how you work.
 
-**Let the agent write rows itself, or it won't happen.** The whole value is that logging is a byproduct of working. If a human has to approve every row, you've rebuilt Asana with extra steps. The `brief` job is the exception — a scan that proposes rather than writes keeps automated sweeps from polluting the log.
+**Verbs.** Start small. Add one only when you catch yourself wanting to say something the existing verbs can't. If you track work with real dependencies you might want a way to say blocked; if you'll never honestly record that you missed something, don't give yourself a verb for it.
 
-**Verify capability claims, and date them.** If you write "X doesn't work" into your instructions, the agent will read it, not try, and confirm it. That belief then never gets retested. When you record a limitation, record the date you verified it — and when you record a method that works, do the same.
+**Scope.** Personal and work commitments have different sources, cadences, and privacy needs. One log per domain tends to beat one log with a context column, but that's a preference, not a rule.
 
-**Match granularity to what you actually finish.** An item covering a whole checklist stays open forever, because something on the list is always unfinished, and it stops carrying information. One item per thing you can close.
+**How much the agent reads at startup.** The cheapest workable pattern is a single check of when the log was last reviewed, and nothing more unless that's stale. How stale is too stale, and what the agent does about it, is up to you.
+
+**Whether anything sweeps for you.** Some people add a scheduled pass that scans their inbox, calendar, and notes for things that ought to be in the log and aren't. If you do, the useful constraint is that the sweep proposes and you decide; an automated job that writes commitment rows on its own will fill the log with things you didn't agree to. It must also be allowed to report nothing, or it becomes one more notification source.
+
+**What you write into the instructions.** Whatever standing instructions your agent loads become beliefs it acts on. If you write down that something doesn't work, the agent will read that, not try, and confirm it, and the belief never gets retested. Date the things you assert, both the limitations and the methods that worked.
 
 ---
 
-## Adapting it
+## Why bother
 
-- **Verbs** are the main dial. Six is enough for personal use. Add `blocked` if you're tracking work with real dependencies; drop `missed` if you won't use it honestly.
-- **`Until`** is what makes deferral real rather than a rename of "ignore." An item deferred until a date shouldn't surface before it.
-- **Scope one log to one domain.** Personal and work tasks have different sources, cadences, and privacy needs. Two tables beats one table with a `Context` column.
-- **Start with the table and the core rules only.** Add the brief once the log has enough in it to be worth briefing on.
+You could keep a task list by hand. The reason to hand it to the agent is that commitments mostly surface inside conversations, and the moment they appear is the only moment they're cheap to capture. A log the agent maintains as it goes captures them at that moment, refuses to forget them, and can be asked, at any point, what you owe and to whom. That's a different thing from a to-do app, and it's a different thing from memory.

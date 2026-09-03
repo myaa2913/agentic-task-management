@@ -6,7 +6,7 @@ But that defense is itself manual work, and it costs the exact thing it's meant 
 
 So: how do you stand up an agentic workflow that manages your tasks continuously, without you?
 
-> **Want to build one?** [`idea.md`](idea.md) is a tool-agnostic setup file — make a table, paste an instruction block into whatever loads on every thread, optionally schedule a brief.
+> **Want to build one?** [`idea.md`](idea.md) lays out the concept — the principles the log rests on, the minimal shape it needs, and the decisions you'll make for yourself. It's deliberately tool-agnostic and leaves the implementation to you.
 
 ## My principles
 
@@ -16,15 +16,15 @@ So: how do you stand up an agentic workflow that manages your tasks continuously
 
 ## The basic components
 
-**A task log database.** A headless table the agent reads from and writes to. Any database an AI can query will do; I use Notion for my personal life. The point is a single source of truth reachable from every conversation thread — and one that *you* own. A list that lives inside a legacy tool slowly becomes a list of that tool's notifications.
+**A task log.** A headless table the agent reads from and writes to. Any database an AI can query will do; I use Notion for my personal life. The point is a single source of truth reachable from every conversation thread — and one that *you* own. A list that lives inside a legacy tool slowly becomes a list of that tool's notifications.
 
-**A schema.** The instructions every thread loads: how to append a row, how to read the table to find open work, when to update status. In my Claude setup these live in Cowork's global instructions. What makes task management always-on rather than a thing I remember to do is that the same instructions and the same table are reachable from everywhere.
+**Standing instructions.** The rules every thread loads: when to add a row, how to tell what's open, what counts as owed. In my Claude setup these live in Cowork's global instructions. What makes task management always-on rather than a thing I remember to do is that the same instructions and the same log are reachable from everywhere.
 
-**A periodic brief (optional).** A scheduled job that sweeps your inputs and reports status on a cadence. In practice this is how I learn that something real came in through a channel I wasn't watching — an important Slack, a comment on a doc that tagged me.
+**A periodic sweep (optional).** A scheduled job that scans your inputs and reports on a cadence. In practice this is how I learn that something real came in through a channel I wasn't watching — an important Slack, a comment on a doc that tagged me. It proposes; I decide what gets logged.
 
 ## How the log works
 
-One table, seven columns: **Item**, **Verb**, **Logged**, **What**, **Next**, **Due**, **Until**. The verbs are `open`, `touch`, `defer`, `close`, `brief`, and `missed`.
+Each row records which item it's about, what kind of event it is, when it was written, and a note about what happened, with optional dates for when it's due and, for deferrals, when it should resurface. The event kinds are a small fixed vocabulary — mine is `open`, `touch`, `defer`, `close`, `missed` — and an item's name is stable for its whole life.
 
 Two design choices do most of the work.
 
@@ -37,10 +37,10 @@ Two smaller rules earn their keep. Only things actually *owed* get a row — que
 ## Why I can't go back
 
 - Task management now happens as a byproduct of working. Every thread I'm in has the capability, so my list updates itself while I do something else.
-- I've stopped monitoring my communication tools. When I'm tagged into a doc full of to-dos, those items simply appear in my database — I don't go hunting across apps to find out what I owe.
+- I've stopped monitoring my communication tools. When I'm tagged into a doc full of to-dos, those items simply appear in my log — I don't go hunting across apps to find out what I owe.
 - My work has a home. One environment, one list, one place to look.
 - Nothing is ever overwritten, so I can reconstruct why something sat untouched for three weeks. A to-do app that only shows current state can't tell me that.
 
 ## Build your own
 
-See [`idea.md`](idea.md).
+Start with [`idea.md`](idea.md). It's the concept, not a recipe — the table, the verbs, and the instructions are yours to shape.
